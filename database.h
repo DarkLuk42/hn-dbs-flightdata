@@ -38,11 +38,13 @@ private:
     static std::string resultStatusMessage(ExecStatusType status);
     std::string resultErrorMessage();
 public:
+    DatabaseResult();
     DatabaseResult(DatabaseConnection* db, PGresult* result);
 
     void check();
 
     void clear();
+    void operator~();
     int nTuples();
     int nFields();
     char * getValue(int row_number, int column_number);
@@ -80,6 +82,7 @@ public:
                                  const char * const *paramValues,
                                  const int *paramLengths,
                                  const int *paramFormats,
+                                 const Oid *paramTypes,
                                  int resultFormat);
     DatabaseResult executeParams(const char *command,
                                  int nParams,

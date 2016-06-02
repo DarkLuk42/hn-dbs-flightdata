@@ -7,137 +7,112 @@
 //   Lukas Kropp
 //
 
-#define LUKAS_SLOW false
-#define LUKAS_BINARY true
-#define MAX_QUERY_PARAMS = 65535
+#define INSERT_MODE_EACH 1
+#define INSERT_MODE_MANY 2
+#define INSERT_MODE_COPY 3
+#define INSERT_MODE INSERT_MODE_MANY
+#define INSERT_BINARY true
+#define MAX_QUERY_PARAMS 65535
 
 #include "copydata.h"
 
 void showResults(DBr result) {
     int r, c;
 
+    std::cout << std::endl;
+
+    std::cout << result.nTuples() << " rows, " << result.nFields() << " fields" << std::endl;
+
+    for(c = 0; c < result.nFields(); c++){
+        std::cout << result.fieldName(c) << " ";
+    }
+    std::cout << std::endl;
+
     for (r = 0; r < result.nTuples(); r++) {
         for(c = 0; c < result.nFields(); c++){
-            char *ptr;
-
-            ptr = result.getValue(r, c);
-
-            std::cout << ptr << " ";
+            if(result.isNull(r, c))
+            {
+                std::cout << "null" << " ";
+            }
+            else
+            {
+                std::cout << "'" << result.getValue(r, c) << "'" << " ";
+            }
         }
 
         std::cout << std::endl;
     }
 }
-
-// Kopieren der Daten aus dbfrom nach dbto
-// rc: Anzahl kopierter Datensätze, -1 bei Fehler
-int flightcopy(PGconn *connFrom, PGconn *connTo)
+int flightcopy(PGconn *connFrom, PGconn *connTo){
+    return flightCopy(DB(connFrom), DB(connTo));
+}
+int flightCopy(DB dbFrom, DB dbTo)
 {
-    clock_t begin = clock();
-    const char *preparedInsertName = "PREPARE_DATA_PLUS_INSERT";
-    DB dbFrom = connFrom;
-    DB dbTo = connTo;
-
     try {
-        const char *querySelect = "SELECT "
-                "id, icao, altitude, "
-                "latitude, longitude, heading, "
-                "velocity, vert_rate, timestamp, "
-                "submitter, flight, airlinecode"
-                " FROM flightdata LIMIT 1000";
-        DBr result = dbFrom.executeParams(querySelect, 0, NULL, NULL, NULL, LUKAS_BINARY ? 1 : 0);
-        std::cout << "SELECT: " << double(clock() - begin) / CLOCKS_PER_SEC << "s" << std::endl;
-
-        int numFields = result.nFields();
-        int numRows = result.nTuples();
-        int count = 0;
-
-        if(LUKAS_SLOW) {
-            const char *paramValues[numFields];
-            int paramLengths[numFields];
-            int paramFormats[numFields];
-            Oid paramTypes[numFields];
-            for (int c = 0; c < numFields; c++) {
-                paramTypes[c] = result.getFieldType(c);
-                paramFormats[c] = LUKAS_BINARY ? 1 : 0;
-            }
-
-            const char *queryInsert = "INSERT INTO flugdaten ("
-                    "id, icao, flughoehe, "
-                    "breite, laenge, richtung, "
-                    "geschwindigkeit, vert_rate, zeit, "
-                    "sender, flugnr, airlinecode"
-                    ") VALUES ("
-                    "$1, $2, $3, "
-                    "$4, $5, $6, "
-                    "$7, $8, $9, "
-                    "$10, $11, $12)";
-            DBr preparedInsert = dbTo.prepare(preparedInsertName, queryInsert, numFields, paramTypes);
-            preparedInsert.clear();
-
-            for (int r = 0; r < numRows; r++) {
-                for (int c = 0; c < numFields; c++) {
-                    if (!result.isNull(r, c)) {
-                        paramValues[c] = result.getValue(r, c);
-                        paramLengths[c] = result.getLength(r, c);
-                    }
-                    else {
-                        paramValues[c] = NULL;
-                        paramLengths[c] = 0;
-                    }
-                }
-
-                DBr tmpResult = dbTo.executePrepared(preparedInsertName, numFields, paramValues, paramLengths,
-                                                     paramFormats, 0);
-                tmpResult.clear();
-                count++;
-            }
-        }else {
-            int numTotal = numRows * numFields;
-            const char *paramValues[numTotal];
-            int paramLengths[numTotal];
-            int paramFormats[numTotal];
-            Oid paramTypes[numTotal];
-
-            std::stringstream allInsert;
-            allInsert << "INSERT INTO flugdaten ("
-                    "id, icao, flughoehe, "
-                    "breite, laenge, richtung, "
-                    "geschwindigkeit, vert_rate, zeit, "
-                    "sender, flugnr, airlinecode"
-                    ") VALUES ";
-            for (int r = 0; r < numRows; r++) {
-                allInsert << "(";
-                for (int c = 0; c < numFields; c++) {
-                    int i = r * numFields + c;
-                    allInsert << "$" << i + 1;
-                    if (c < numFields - 1) {
-                        allInsert << ",";
-                    }
-                    paramValues[i] = result.getValue(r, c);
-                    paramLengths[i] = result.getLength(r, c);
-                    paramTypes[i] = result.getFieldType(c);
-                    paramFormats[i] = LUKAS_BINARY ? 1 : 0;
-                }
-                allInsert << ")";
-                if (r < numRows - 1) {
-                    allInsert << ",";
-                }
-                count++;
-            }
-
-            std::string insertQuery = allInsert.str();
-
-            DBr preparedInsert = dbTo.prepare(preparedInsertName, insertQuery.c_str(), numFields, paramTypes);
-            preparedInsert.clear();
-
-            DBr tmpResult = dbTo.executePrepared(preparedInsertName, numTotal, paramValues, paramLengths, paramFormats, 0);
-            tmpResult.clear();
+        DBr lastUpdate = dbTo.execute("SELECT max(zeit) FROM flugdaten");
+        std::string querySelect;
+        DBr result;
+        if(lastUpdate.nTuples() > 0 && !lastUpdate.isNull(0, 0))
+        {
+            querySelect = "SELECT "
+                    "id, icao, altitude, "
+                    "latitude, longitude, heading, "
+                    "velocity, vert_rate, timestamp, "
+                    "submitter, flight, airlinecode"
+                    " FROM flightdata WHERE timestamp > $1";
+            const char * paramValues[1];
+            paramValues[0] = lastUpdate.getValue(0, 0);
+            const int *paramLengths = NULL;
+            const int *paramFormats = NULL;
+            const Oid *paramTypes = NULL;
+            result = dbFrom.executeParams(querySelect.c_str(), 1, paramValues, paramLengths, paramFormats, paramTypes, INSERT_BINARY ? 1 : 0);
         }
-        std::cout << "BINARY: " << (LUKAS_BINARY ? 1 : 0) << std::endl;
-        std::cout << "SLOW: " << (LUKAS_SLOW ? 1 : 0) << std::endl;
-        std::cout << "INSERT: " << double(clock() - begin) / CLOCKS_PER_SEC << "s" << std::endl;
-        result.clear();
+        else
+        {
+            querySelect = "SELECT "
+                    "id, icao, altitude, "
+                    "latitude, longitude, heading, "
+                    "velocity, vert_rate, timestamp, "
+                    "submitter, flight, airlinecode"
+                    " FROM flightdata";
+            result = dbFrom.executeParams(querySelect.c_str(), 0, NULL, NULL, NULL, NULL, INSERT_BINARY ? 1 : 0);
+        }
+
+        std::string table = "flugdaten";
+        int count = 0;
+        std::string insertColumns[] = {
+                "id",
+                "icao",
+                "flughoehe",
+                "breite",
+                "laenge",
+                "richtung",
+                "geschwindigkeit",
+                "vert_rate",
+                "zeit",
+                "sender",
+                "flugnr",
+                "airlinecode"
+        };
+
+        switch(INSERT_MODE)
+        {
+            default:
+            case INSERT_MODE_EACH:
+                insertViaEachRow(dbTo, result, table, 12, insertColumns, count);
+                break;
+            case INSERT_MODE_MANY:
+                insertViaManyRows(dbTo, result, table, 12, insertColumns, count);
+                break;
+            case INSERT_MODE_COPY:
+                insertViaCopy(dbTo, result, table, 12, insertColumns, count);
+                break;
+        }
+
+        std::cout << "insert-mode: " <<
+                (INSERT_MODE == INSERT_MODE_EACH ? "each" :
+                 (INSERT_MODE == INSERT_MODE_MANY ? "many" : "copy")) <<
+                " " << (INSERT_BINARY ? "binary" : "string") << std::endl;
         return count;
     }catch (ResultException e)
     {
@@ -146,12 +121,108 @@ int flightcopy(PGconn *connFrom, PGconn *connTo)
     }
 }
 
-// Hinzufügen einer Fluggesellschaft
-// ist die Flugesellschaft schon vorhanden, wird sie nicht hinzugefügt
-// rc: -1 = Fehler, 0 = schon vorhanden, 1 = hinzugefügt
-int addairline(PGconn *dbto, const string &code, const string &name)
+void insertViaManyRows(DatabaseConnection dbTo, DatabaseResult result, std::string table, int nColumns, std::string insertColumns[], int &count){
+    int numRows = result.nTuples();
+    int numFields = result.nFields();
+
+    int numTotal = numRows * numFields;
+    const char *paramValues[numTotal];
+    int paramLengths[numTotal];
+    int paramFormats[numTotal];
+    Oid paramTypes[numTotal];
+
+    int chunkMaxRows = MAX_QUERY_PARAMS / numFields;
+    for(int chunkRow = 0; chunkRow < numRows; chunkRow += chunkMaxRows) {
+        int numCurrentRows = numRows % chunkMaxRows;
+        int numCurrentTotal = numCurrentRows * numFields;
+        for (int r = 0; r < numCurrentRows; r++) {
+            for (int c = 0; c < numFields; c++) {
+                int i = r * numFields + c;
+                paramValues[i] = result.getValue(chunkRow+r, c);
+                paramLengths[i] = result.getLength(chunkRow+r, c);
+                paramTypes[i] = result.getFieldType(c);
+                paramFormats[i] = INSERT_BINARY ? 1 : 0;
+            }
+            ++count;
+        }
+
+        std::string insertQuery = buildInsertQuery(std::string("flugdaten"), 12, insertColumns, numCurrentRows);
+
+        dbTo.executeParams(insertQuery.c_str(), numCurrentTotal, paramValues, paramLengths, paramFormats, paramTypes, 0);
+    }
+}
+
+void insertViaEachRow(DatabaseConnection dbTo, DatabaseResult result, std::string table, int nColumns, std::string insertColumns[], int &count){
+    int numRows = result.nTuples();
+    int numFields = result.nFields();
+
+    const char *preparedInsertName = "PREPARE_DATA_PLUS_INSERT";
+    const char *paramValues[numFields];
+    int paramLengths[numFields];
+    int paramFormats[numFields];
+    Oid paramTypes[numFields];
+
+    for (int c = 0; c < numFields; c++) {
+        paramTypes[c] = result.getFieldType(c);
+        paramFormats[c] = INSERT_BINARY ? 1 : 0;
+    }
+
+    std::string insertQuery = buildInsertQuery(table, nColumns, insertColumns);
+    dbTo.prepare(preparedInsertName, insertQuery.c_str(), numFields, paramTypes);
+
+    for (int r = 0; r < numRows; r++) {
+    for (int c = 0; c < numFields; c++) {
+        if (!result.isNull(r, c)) {
+            paramValues[c] = result.getValue(r, c);
+            paramLengths[c] = result.getLength(r, c);
+        }
+        else {
+            paramValues[c] = NULL;
+            paramLengths[c] = 0;
+        }
+    }
+
+    dbTo.executePrepared(preparedInsertName, numFields, paramValues, paramLengths, paramFormats, 0);
+    ++count;
+    }
+}
+
+std::string buildInsertQuery(std::string table, int nColumns, std::string columnFields[], int nRows)
 {
-    DB db = dbto;
+    std::stringstream allInsert;
+    allInsert << "INSERT INTO " << table << " (";
+    for (int c = 0; c < nColumns; c++) {
+        allInsert << columnFields[c];
+        if (c < nColumns - 1) {
+            allInsert << ",";
+        }
+    }
+    allInsert << ") VALUES ";
+    for (int r = 0; r < nRows; r++) {
+        allInsert << "(";
+        for (int c = 0; c < nColumns; c++) {
+            int i = r * nColumns + c;
+            allInsert << "$" << i + 1;
+            if (c < nColumns - 1) {
+                allInsert << ",";
+            }
+        }
+        allInsert << ")";
+        if (r < nRows - 1) {
+            allInsert << ",";
+        }
+    }
+    return allInsert.str();
+}
+std::string buildInsertQuery(std::string table, int nColumns, std::string columnFields[]){
+    return buildInsertQuery(table, nColumns, columnFields, 1);
+}
+
+int addairline(PGconn *dbto, const string &code, const string &name){
+    return addAirline(DB(dbto), code, name);
+}
+int addAirline(DB db, const string &code, const string &name)
+{
     const char* paramValues[2];
     int paramLengths[2];
     paramValues[0] = code.c_str();
@@ -163,10 +234,8 @@ int addairline(PGconn *dbto, const string &code, const string &name)
         DBr test = db.executeParams("SELECT count(1) FROM airline WHERE code=$1 AND name=$2", 2, paramValues, paramLengths);
         if(boost::lexical_cast<int>(test.getValue(0, 0)) == 1)
         {
-            test.clear();
             return 0;
         }
-        test.clear();
         db.executeParams("INSERT INTO airline (code, name) VALUES ($1, $2)", 2, paramValues, paramLengths);
         return 1;
     }catch (ResultException e)
@@ -174,4 +243,20 @@ int addairline(PGconn *dbto, const string &code, const string &name)
         std::cerr << e.message << std::endl;
         return -1;
     }
+}
+int addAirlines(DB dbFrom, DB dbTo)
+{
+    int countAirlines = 0;
+    DBr airlinesResult = dbFrom.execute(
+            "SELECT airlinecode, airline FROM flightdata GROUP BY airline, airlinecode");
+    for (int r = 0; r < airlinesResult.nTuples(); r++) {
+        int airlineResult = addairline(dbTo.getRaw(), std::string(airlinesResult.getValue(r, 0)),
+                                       std::string(airlinesResult.getValue(r, 1)));
+        if(airlineResult == -1)
+        {
+            throw ResultException("Airline could not be added.");
+        }
+        countAirlines += airlineResult;
+    }
+    return countAirlines;
 }

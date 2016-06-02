@@ -32,6 +32,10 @@ std::string DatabaseResult::resultErrorMessage(){
     return std::string(PQresultErrorMessage(this->result)) + this->db->errorMessage();
 }
 
+DatabaseResult::DatabaseResult(){
+    this->db = NULL;
+    this->result = NULL;
+}
 DatabaseResult::DatabaseResult(DatabaseConnection* db, PGresult* result){
     this->db = db;
     this->result = result;
@@ -60,6 +64,9 @@ void DatabaseResult::check(){
     }
 };
 
+void DatabaseResult::operator~(){
+    this->clear();
+}
 void DatabaseResult::clear(){
     PQclear(this->result);
 }
@@ -144,16 +151,17 @@ DatabaseResult DatabaseConnection::execute(const char *command){
 }
 
 DatabaseResult DatabaseConnection::executeParams(const char *command,
-                             int nParams,
-                             const char * const *paramValues,
-                             const int *paramLengths,
-                             const int *paramFormats,
-                             int resultFormat){
+                                                 int nParams,
+                                                 const char * const *paramValues,
+                                                 const int *paramLengths,
+                                                 const int *paramFormats,
+                                                 const Oid *paramTypes,
+                                                 int resultFormat){
     //std::cout << "executeParams(" << command << ", " << nParams << ", ..., ...)" << std::endl;
     DatabaseResult result = DatabaseResult(this, PQexecParams(this->conn,
                                                               command,
                                                               nParams,
-                                                              NULL,
+                                                              paramTypes,
                                                               paramValues,
                                                               paramLengths,
                                                               paramFormats,
@@ -165,7 +173,7 @@ DatabaseResult DatabaseConnection::executeParams(const char *command,
                              int nParams,
                              const char * const *paramValues,
                              const int *paramLengths){
-    return executeParams(command, nParams, paramValues, paramLengths, NULL, 0);
+    return executeParams(command, nParams, paramValues, paramLengths, NULL, NULL, 0);
 }
 
 DatabaseResult DatabaseConnection::executePrepared(const char *stmtName,

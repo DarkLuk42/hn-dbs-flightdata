@@ -17,7 +17,6 @@
 //========================================================
 int main (int argc, char* argv[])
 {
-    bool optCreateTables = false;
     bool optDeleteBeforeImport = false;
     string optUser = "lukas";
     string optPassword = "test";
@@ -30,9 +29,6 @@ int main (int argc, char* argv[])
         if(input.compare("-del") == 0)
         {
             optDeleteBeforeImport = true;
-        }else if(input.compare("-create") == 0)
-        {
-            optCreateTables = true;
         }else if(input.compare("-u") == 0){
             if(++i < argc)
             {
@@ -66,56 +62,65 @@ int main (int argc, char* argv[])
         }
     }
 
-    printf("create: %s\n", optCreateTables ? "true" : "false");
-    printf("delete: %s\n", optDeleteBeforeImport ? "true" : "false");
-    printf("user: %s\n", optUser.c_str());
-    printf("password: %s\n", optPassword.c_str());
-    printf("host: %s\n", optHost.c_str());
-    printf("from: %s\n", optFromDatabase.c_str());
-    printf("to: %s\n", optToDatabase.c_str());
+    std::cout << std::endl;
+    std::cout << "delete:   " << (optDeleteBeforeImport ? "yes" : "no") << std::endl;
+    std::cout << "user:     " << optUser << std::endl;
+    std::cout << "password: " << optPassword << std::endl;
+    std::cout << "host:     " << optHost << std::endl;
+    std::cout << "db-from:  " << optFromDatabase << std::endl;
+    std::cout << "db-to:    " << optToDatabase << std::endl;
+    std::cout << std::endl;
 
     try {
         DB connFrom = DB(optFromDatabase, optUser, optPassword, optHost);
         DB connTo = DB(optToDatabase, optUser, optPassword, optHost);
 
-        if (optDeleteBeforeImport) {
-            try{
-                connTo.execute("TRUNCATE TABLE flugdaten, airline");
-                std::cout << "Truncated tables." << std::endl;
-            }catch (ResultException e)
-            {
-                std::cerr << e.message << std::endl;
-                return 1;
-            }
-        }
+        try {
+            connTo.execute("BEGIN TRANSACTION");
+            std::cout << "Began transaction." << std::endl;
 
-        int countAirlines = 0;
-        DBr airlinesResult = connFrom.execute(
-                "SELECT airlinecode, airline FROM flightdata GROUP BY airline, airlinecode");
-        for (int r = 0; r < airlinesResult.nTuples(); r++) {
-            int airlineResult = addairline(connTo.getRaw(), std::string(airlinesResult.getValue(r, 0)),
-                       std::string(airlinesResult.getValue(r, 1)));
-            if(airlineResult == -1)
-            {
-                throw ResultException("Airline could not be added.");
-            }
-            countAirlines += airlineResult;
-        }
-        std::cout << "Added " << countAirlines << " airlines." << std::endl;
+            const char *statsQuery = "SELECT (SELECT count(1) FROM flugdaten) AS fluege, (SELECT count(1) FROM airline) AS airlines";
 
-        int result = flightcopy(connFrom.getRaw(), connTo.getRaw());
-        if(result == -1)
+            if (optDeleteBeforeImport) {
+                try {
+                    connTo.execute("TRUNCATE TABLE flugdaten, airline");
+                    std::cout << "Truncated tables." << std::endl;
+                } catch (ResultException e) {
+                    throw ResultException("Truncating tables failed!");
+                }
+            }
+
+            DBr statsResult = connTo.execute(statsQuery);
+
+            int countAirlines = addAirlines(connFrom, connTo);
+            if (countAirlines == -1) {
+                throw ResultException("Adding airlines failed!");
+            }
+            std::cout << "Added " << countAirlines << " airlines." << std::endl;
+
+            int result = flightcopy(connFrom.getRaw(), connTo.getRaw());
+            if (result == -1) {
+                throw ResultException("Flights could not be added.");
+            }
+            std::cout << "Added " << result << " flights." << std::endl;
+
+            connTo.execute("COMMIT TRANSACTION");
+            std::cout << "Commit transaction." << std::endl;
+
+            showResults(statsResult);
+            showResults(connTo.execute(statsQuery));
+
+            connFrom.finish();
+            connTo.finish();
+        }catch (ResultException e)
         {
-            throw ResultException("Flights could not be added.");
+            std::cerr << e.message << std::endl;
+            connFrom.finish();
+            connTo.execute("ROLLBACK TRANSACTION");
+            std::cout << "Rolled transaction back." << std::endl;
+            connTo.finish();
+            return 1;
         }
-        std::cout << "Added " << result << " flights." << std::endl;
-
-        connFrom.finish();
-        connTo.finish();
-    }catch (ResultException e)
-    {
-        std::cerr << e.message << std::endl;
-        return 1;
     }catch (ConnectionException e)
     {
         std::cerr << e.message << std::endl;
