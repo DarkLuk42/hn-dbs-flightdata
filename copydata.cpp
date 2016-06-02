@@ -232,7 +232,8 @@ int addAirline(DB db, const string &code, const string &name)
 
     try{
         DBr test = db.executeParams("SELECT count(1) FROM airline WHERE code=$1 AND name=$2", 2, paramValues, paramLengths);
-        if(boost::lexical_cast<int>(test.getValue(0, 0)) == 1)
+        char* count = test.getValue(0, 0);
+        if(count[0] != '0')
         {
             return 0;
         }

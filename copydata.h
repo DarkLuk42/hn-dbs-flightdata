@@ -14,8 +14,6 @@
 #include <string.h>
 #include <string>
 #include <iostream>
-#include <ctime>
-#include <boost/lexical_cast.hpp>
 #include "database.h"
 
 using namespace std;
