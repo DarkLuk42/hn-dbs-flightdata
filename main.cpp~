@@ -7,11 +7,18 @@
 //   Student2
 //
 
-#include "database.h"
+#include <stdio.h>
+#include <cstdlib>
 #include "copydata.h"
+#include <libpq-fe.h>
 #include <string>
 #include <sstream>
-#include <iostream>
+
+static void exit_nicely(PGconn *conn)
+{
+    PQfinish(conn);
+    exit(1);
+}
 
 // Hauptprogramm
 //========================================================
@@ -32,7 +39,7 @@ int main (int argc, char* argv[])
             optDeleteBeforeImport = true;
         }else if(input.compare("-create") == 0)
         {
-            optCreateTables = true;
+            optDeleteBeforeImport = true;
         }else if(input.compare("-u") == 0){
             if(++i < argc)
             {
@@ -74,53 +81,39 @@ int main (int argc, char* argv[])
     printf("from: %s\n", optFromDatabase.c_str());
     printf("to: %s\n", optToDatabase.c_str());
 
-    try {
-        DB connFrom = DB(optFromDatabase, optUser, optPassword, optHost);
-        DB connTo = DB(optToDatabase, optUser, optPassword, optHost);
-
-        if (optDeleteBeforeImport) {
-            try{
-                connTo.execute("TRUNCATE TABLE flugdaten, airline");
-                std::cout << "Truncated tables." << std::endl;
-            }catch (ResultException e)
-            {
-                std::cerr << e.message << std::endl;
-                return 1;
-            }
-        }
-
-        int countAirlines = 0;
-        DBr airlinesResult = connFrom.execute(
-                "SELECT airlinecode, airline FROM flightdata GROUP BY airline, airlinecode");
-        for (int r = 0; r < airlinesResult.nTuples(); r++) {
-            int airlineResult = addairline(connTo.getRaw(), std::string(airlinesResult.getValue(r, 0)),
-                       std::string(airlinesResult.getValue(r, 1)));
-            if(airlineResult == -1)
-            {
-                throw ResultException("Airline could not be added.");
-            }
-            countAirlines += airlineResult;
-        }
-        std::cout << "Added " << countAirlines << " airlines." << std::endl;
-
-        int result = flightcopy(connFrom.getRaw(), connTo.getRaw());
-        if(result == -1)
-        {
-            throw ResultException("Flights could not be added.");
-        }
-        std::cout << "Added " << result << " flights." << std::endl;
-
-        connFrom.finish();
-        connTo.finish();
-    }catch (ResultException e)
+    PGconn* connFrom;
+    std::stringstream ssFrom;
+    ssFrom << "dbname=" << optFromDatabase << " user=" << optUser << " password=" << optPassword << " hostaddr=" << optHost;
+    string connInfoFrom = ssFrom.str();
+    connFrom = PQconnectdb(connInfoFrom.c_str());
+    if (PQstatus(connFrom) != CONNECTION_OK)
     {
-        std::cerr << e.message << std::endl;
-        return 1;
-    }catch (ConnectionException e)
-    {
-        std::cerr << e.message << std::endl;
-        return 1;
+        fprintf(stderr, "Connection to database %s failed: %s",
+                optFromDatabase.c_str(),
+                PQerrorMessage(connFrom));
+        exit_nicely(connFrom);
     }
+
+    PGconn* connTo;
+    std::stringstream ssTo;
+    ssTo << "dbname=" << optToDatabase << " user=" << optUser << " password=" << optPassword << " hostaddr=" << optHost;
+    string connInfoTo = ssTo.str();
+    connTo = PQconnectdb(connInfoTo.c_str());
+    if (PQstatus(connTo) != CONNECTION_OK)
+    {
+        fprintf(stderr, "Connection to database %s failed: %s",
+                optFromDatabase.c_str(),
+                PQerrorMessage(connTo));
+        PQfinish(connFrom);
+        exit_nicely(connTo);
+    }
+
+    int result = flightcopy(connFrom, connTo);
+
+    PQfinish(connFrom);
+    PQfinish(connTo);
+
+    printf("done\n");
 
     return 0;
 }

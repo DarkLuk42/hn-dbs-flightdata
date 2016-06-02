@@ -4,8 +4,59 @@
 
 #ifndef IMPORTFLIGHTS_HELPER_H
 #define IMPORTFLIGHTS_HELPER_H
-
 #endif //IMPORTFLIGHTS_HELPER_H
+
+#ifndef PGRES_EMPTY_QUERY
+#define PGRES_EMPTY_QUERY 0
+#endif // The string sent to the server was empty.
+
+#ifndef PGRES_COMMAND_OK
+#define PGRES_COMMAND_OK 0
+#endif // Successful completion of a command returning no data.
+
+#ifndef PGRES_TUPLES_OK
+#define PGRES_TUPLES_OK 0
+#endif // Successful completion of a command returning data (such as a SELECT or SHOW).
+
+#ifndef PGRES_COPY_OUT
+#define PGRES_COPY_OUT 0
+#endif // Copy Out (from server) data transfer started.
+
+#ifndef PGRES_COPY_IN
+#define PGRES_COPY_IN 0
+#endif // Copy In (to server) data transfer started.
+
+#ifndef PGRES_BAD_RESPONSE
+#define PGRES_BAD_RESPONSE 0
+#endif // The server's response was not understood.
+
+#ifndef PGRES_NONFATAL_ERROR
+#define PGRES_NONFATAL_ERROR 0
+#endif // A nonfatal error (a notice or warning) occurred.
+
+#ifndef PGRES_FATAL_ERROR
+#define PGRES_FATAL_ERROR 0
+#endif // A fatal error occurred.
+
+#ifndef PGRES_COPY_BOTH
+#define PGRES_COPY_BOTH 0
+#endif // Copy In/Out (to and from server) data transfer started. This is currently used only for streaming replication.
+
+#ifndef CONNECTION_BAD
+#define CONNECTION_BAD 0
+#endif
+
+#ifndef CONNECTION_OK
+#define CONNECTION_OK 0
+#endif
+
+#ifndef PGconn
+#define PGconn PGconn
+#endif
+
+#ifndef PGresult
+#define PGresult PGresult
+#endif
 
 PGresult *PQexec(PGconn *conn, const char *command);
 PGresult *PQexecParams(PGconn *conn,

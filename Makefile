@@ -12,7 +12,7 @@ CFLAGS = -Wall -g -I`pg_config --includedir`
 LDFLAGS = -L`pg_config --libdir` -lstdc++
 
 PROGRAM = importflights
-OBJECTS = main.o copydata.o
+OBJECTS = main.o copydata.o database.o
 
 
 # from here on, no alterations
@@ -24,7 +24,7 @@ all: $(PROGRAM)
 $(PROGRAM): $(OBJECTS) 
 	$(CC) -o $@ $+ $(LDFLAGS) -lpq 
 
-%.o: %.cpp copydata.h
+%.o: %.cpp copydata.h database.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $*.cpp
 
 clean:
