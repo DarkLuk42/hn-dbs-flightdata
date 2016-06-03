@@ -10,6 +10,14 @@
 #ifndef copydata_H
 #define copydata_H
 
+#define MAX_QUERY_PARAMS 65535
+
+#define INSERT_MODE_EACH 1
+#define INSERT_MODE_MANY 2
+#define INSERT_MODE_COPY 3
+extern int INSERT_MODE;
+extern bool INSERT_BINARY;
+
 #include <libpq-fe.h>
 #include <string.h>
 #include <string>
@@ -32,7 +40,7 @@ int addairline(PGconn *dbto, const string &code, const string &name);
 
 void insertViaEachRow(DatabaseConnection dbTo, DatabaseResult result, std::string table, int nColumns, std::string insertColumns[], int &count);
 void insertViaManyRows(DatabaseConnection dbTo, DatabaseResult result, std::string table, int nColumns, std::string insertColumns[], int &count);
-void insertViaCopy(DatabaseConnection dbTo, DatabaseResult result, std::string table, int nColumns, std::string insertColumns[], int &count);
+void insertViaCopy(DatabaseConnection dbFrom, DatabaseConnection dbTo, std::string querySelect, std::string table, int nColumns, std::string insertColumns[], int &count);
 
 std::string buildInsertQuery(std::string table, int nColumns, std::string columnFields[], int nRows);
 std::string buildInsertQuery(std::string table, int nColumns, std::string columnFields[]);

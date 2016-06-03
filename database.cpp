@@ -150,6 +150,28 @@ DatabaseResult DatabaseConnection::execute(const char *command){
     return result;
 }
 
+int DatabaseConnection::putCopyData(const char *buffer, int nBytes)
+{
+    int result = PQputCopyData(this->conn, buffer, nBytes);
+    this->check();
+    return result;
+}
+int DatabaseConnection::putCopyEnd(const char *errormsg){
+    int result = PQputCopyEnd(this->conn, errormsg);
+    this->check();
+    return result;
+}
+int DatabaseConnection::getCopyData(char **buffer, int async)
+{
+    int result = PQgetCopyData(this->conn, buffer, async);
+    this->check();
+    return result;
+}
+void DatabaseConnection::freeMem(char *buffer)
+{
+    PQfreemem(buffer);
+}
+
 DatabaseResult DatabaseConnection::executeParams(const char *command,
                                                  int nParams,
                                                  const char * const *paramValues,

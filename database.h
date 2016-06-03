@@ -77,6 +77,11 @@ public:
 
     DatabaseResult execute(const char *command);
 
+    int putCopyData(const char *buffer, int nBytes);
+    int putCopyEnd(const char *errormsg);
+    int getCopyData(char **buffer, int async);
+    void freeMem(char *buffer);
+
     DatabaseResult executeParams(const char *command,
                                  int nParams,
                                  const char * const *paramValues,

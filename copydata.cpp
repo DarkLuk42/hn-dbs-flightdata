@@ -7,14 +7,9 @@
 //   Lukas Kropp
 //
 
-#define INSERT_MODE_EACH 1
-#define INSERT_MODE_MANY 2
-#define INSERT_MODE_COPY 3
-#define INSERT_MODE INSERT_MODE_MANY
-#define INSERT_BINARY true
-#define MAX_QUERY_PARAMS 65535
-
 #include "copydata.h"
+int INSERT_MODE = INSERT_MODE_MANY;
+bool INSERT_BINARY = true;
 
 void showResults(DBr result) {
     int r, c;
@@ -95,6 +90,11 @@ int flightCopy(DB dbFrom, DB dbTo)
                 "airlinecode"
         };
 
+        std::cout << "insert-mode: " <<
+        (INSERT_MODE == INSERT_MODE_EACH ? "each" :
+         (INSERT_MODE == INSERT_MODE_MANY ? "many" : "copy")) <<
+        " " << (INSERT_BINARY ? "binary" : "string") << std::endl;
+
         switch(INSERT_MODE)
         {
             default:
@@ -105,14 +105,9 @@ int flightCopy(DB dbFrom, DB dbTo)
                 insertViaManyRows(dbTo, result, table, 12, insertColumns, count);
                 break;
             case INSERT_MODE_COPY:
-                insertViaCopy(dbTo, result, table, 12, insertColumns, count);
+                insertViaCopy(dbFrom, dbTo, querySelect, table, 12, insertColumns, count);
                 break;
         }
-
-        std::cout << "insert-mode: " <<
-                (INSERT_MODE == INSERT_MODE_EACH ? "each" :
-                 (INSERT_MODE == INSERT_MODE_MANY ? "many" : "copy")) <<
-                " " << (INSERT_BINARY ? "binary" : "string") << std::endl;
         return count;
     }catch (ResultException e)
     {
@@ -156,7 +151,12 @@ void insertViaEachRow(DatabaseConnection dbTo, DatabaseResult result, std::strin
     int numRows = result.nTuples();
     int numFields = result.nFields();
 
-    const char *preparedInsertName = "PREPARE_DATA_PLUS_INSERT";
+    const char *preparedInsertName;
+    if(INSERT_BINARY) {
+        preparedInsertName = "PREPARE_DATA_PLUS_INSERT_BINARY";
+    }else{
+        preparedInsertName = "PREPARE_DATA_PLUS_INSERT";
+    }
     const char *paramValues[numFields];
     int paramLengths[numFields];
     int paramFormats[numFields];
@@ -185,6 +185,32 @@ void insertViaEachRow(DatabaseConnection dbTo, DatabaseResult result, std::strin
     dbTo.executePrepared(preparedInsertName, numFields, paramValues, paramLengths, paramFormats, 0);
     ++count;
     }
+}
+
+void insertViaCopy(DatabaseConnection dbFrom, DatabaseConnection dbTo, std::string querySelect, std::string table, int nColumns, std::string insertColumns[], int &count){
+    std::stringstream copyFrom;
+    copyFrom << "COPY (" << querySelect << ") TO STDOUT";
+    std::stringstream copyTo;
+    copyTo << "COPY " << table << " (";
+    for(int c = 0; c < nColumns; c++)
+    {
+        copyTo << insertColumns[c];
+        if(c<nColumns-1)
+        {
+            copyTo << ",";
+        }
+    }
+    copyTo << ") FROM STDIN";
+    dbFrom.execute(copyFrom.str().c_str());
+    dbTo.execute(copyTo.str().c_str());
+    char** buffer = new char*;
+    int bufferLen;
+    while((bufferLen = dbFrom.getCopyData(buffer, 0)) != -1){
+        while(dbTo.putCopyData(*buffer, bufferLen) == 0);
+        count++;
+        dbFrom.freeMem(*buffer);
+    }
+    dbTo.putCopyEnd(NULL);
 }
 
 std::string buildInsertQuery(std::string table, int nColumns, std::string columnFields[], int nRows)
