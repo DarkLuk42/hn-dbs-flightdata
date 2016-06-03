@@ -218,7 +218,7 @@ int main (int argc, char* argv[])
             std::cerr << e.message << std::endl;
             dbFrom.finish();
             dbTo.execute("ROLLBACK TRANSACTION");
-            std::cout << "Rolled transaction back." << std::endl;
+            std::cout << "Rolled transacetion back." << std::endl;
             dbTo.finish();
             return 1;
         }

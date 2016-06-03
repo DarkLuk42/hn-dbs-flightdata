@@ -46,6 +46,7 @@ int flightCopy(DB dbFrom, DB dbTo)
     try {
         DBr lastUpdate = dbTo.execute("SELECT max(zeit) FROM flugdaten");
         std::string querySelect;
+        std::string lastUpdateStr = "";
         DBr result;
         if(lastUpdate.nTuples() > 0 && !lastUpdate.isNull(0, 0))
         {
@@ -56,7 +57,8 @@ int flightCopy(DB dbFrom, DB dbTo)
                     "submitter, flight, airlinecode"
                     " FROM flightdata WHERE timestamp > $1";
             const char * paramValues[1];
-            paramValues[0] = lastUpdate.getValue(0, 0);
+            lastUpdateStr = lastUpdate.getValue(0, 0);
+            paramValues[0] = lastUpdateStr.c_str();
             const int *paramLengths = NULL;
             const int *paramFormats = NULL;
             const Oid *paramTypes = NULL;
@@ -105,7 +107,7 @@ int flightCopy(DB dbFrom, DB dbTo)
                 insertViaManyRows(dbTo, result, table, 12, insertColumns, count);
                 break;
             case INSERT_MODE_COPY:
-                insertViaCopy(dbFrom, dbTo, querySelect, table, 12, insertColumns, count);
+                insertViaCopy(dbFrom, dbTo, querySelect, lastUpdateStr, table, 12, insertColumns, count);
                 break;
         }
         return count;
@@ -171,23 +173,23 @@ void insertViaEachRow(DatabaseConnection dbTo, DatabaseResult result, std::strin
     dbTo.prepare(preparedInsertName, insertQuery.c_str(), numFields, paramTypes);
 
     for (int r = 0; r < numRows; r++) {
-    for (int c = 0; c < numFields; c++) {
-        if (!result.isNull(r, c)) {
-            paramValues[c] = result.getValue(r, c);
-            paramLengths[c] = result.getLength(r, c);
+        for (int c = 0; c < numFields; c++) {
+            if (!result.isNull(r, c)) {
+                paramValues[c] = result.getValue(r, c);
+                paramLengths[c] = result.getLength(r, c);
+            }
+            else {
+                paramValues[c] = NULL;
+                paramLengths[c] = 0;
+            }
         }
-        else {
-            paramValues[c] = NULL;
-            paramLengths[c] = 0;
-        }
-    }
 
-    dbTo.executePrepared(preparedInsertName, numFields, paramValues, paramLengths, paramFormats, 0);
-    ++count;
+        dbTo.executePrepared(preparedInsertName, numFields, paramValues, paramLengths, paramFormats, 0);
+        ++count;
     }
 }
 
-void insertViaCopy(DatabaseConnection dbFrom, DatabaseConnection dbTo, std::string querySelect, std::string table, int nColumns, std::string insertColumns[], int &count){
+void insertViaCopy(DatabaseConnection dbFrom, DatabaseConnection dbTo, std::string querySelect, std::string lastUpdateStr, std::string table, int nColumns, std::string insertColumns[], int &count){
     std::stringstream copyFrom;
     copyFrom << "COPY (" << querySelect << ") TO STDOUT";
     std::stringstream copyTo;
@@ -201,7 +203,22 @@ void insertViaCopy(DatabaseConnection dbFrom, DatabaseConnection dbTo, std::stri
         }
     }
     copyTo << ") FROM STDIN";
-    dbFrom.execute(copyFrom.str().c_str());
+    if(lastUpdateStr.compare("") == 0) {
+        dbFrom.execute(copyFrom.str().c_str());
+    }else {
+        const char *paramValues[1];
+        paramValues[0] = lastUpdateStr.c_str();
+        try{
+            std::cout << "try 0" << std::endl;
+            dbFrom.executeParams(copyFrom.str().c_str(), 0, NULL, NULL);
+        }catch(ResultException e)
+        {
+            std::cout << e.message << std::endl;
+            std::cout << "try 1" << std::endl;
+            dbFrom.executeParams(copyFrom.str().c_str(), 1, paramValues, NULL);
+            std::cout << ":(" << std::endl;
+        }
+    }
     dbTo.execute(copyTo.str().c_str());
     char** buffer = new char*;
     int bufferLen;

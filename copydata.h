@@ -40,7 +40,7 @@ int addairline(PGconn *dbto, const string &code, const string &name);
 
 void insertViaEachRow(DatabaseConnection dbTo, DatabaseResult result, std::string table, int nColumns, std::string insertColumns[], int &count);
 void insertViaManyRows(DatabaseConnection dbTo, DatabaseResult result, std::string table, int nColumns, std::string insertColumns[], int &count);
-void insertViaCopy(DatabaseConnection dbFrom, DatabaseConnection dbTo, std::string querySelect, std::string table, int nColumns, std::string insertColumns[], int &count);
+void insertViaCopy(DatabaseConnection dbFrom, DatabaseConnection dbTo, std::string querySelect, std::string lastUpdateStr, std::string table, int nColumns, std::string insertColumns[], int &count);
 
 std::string buildInsertQuery(std::string table, int nColumns, std::string columnFields[], int nRows);
 std::string buildInsertQuery(std::string table, int nColumns, std::string columnFields[]);
